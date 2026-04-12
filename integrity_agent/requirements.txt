@@ -1,0 +1,10 @@
+streamlit
+textstat
+sentence-transformers
+scikit-learn
+python-dotenv
+litellm
+supabase
+streamlit-webrtc
+opencv-python-headless
+mediapipe
