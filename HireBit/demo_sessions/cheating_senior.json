@@ -1,0 +1,69 @@
+[
+  {
+    "session_id": "sess_2849344445_cheater_demo",
+    "candidate_level": "senior",
+    "response_index": 3,
+    "timestamp_utc": "2025-09-14T11:42:07Z",
+    "response_metadata": {
+      "question_text": "Explain how you would design a rate limiter at scale.",
+      "response_text": "A token bucket algorithm with Redis backing is preferred. Using distributed consensus via the Raft algorithm ensures leader election is deterministic and log replication is linearizable, ensuring high throughput across distributed microservices via RPC queues.",
+      "word_count": 35,
+      "flesch_kincaid_grade": 14.2,
+      "delta_t_seconds": 4.5,
+      "words_per_second": 7.8
+    },
+    "signals": {
+      "cosine_drift": {
+        "value": 0.61,
+        "threshold": 0.30,
+        "triggered": true,
+        "confidence_points": 48.5
+      },
+      "vocabulary_delta": {
+        "current_fk": 14.2,
+        "session_mean_fk": 8.4,
+        "delta": 5.8,
+        "threshold": 1.5,
+        "triggered": true,
+        "confidence_points": 25.0
+      },
+      "time_complexity": {
+        "delta_t_seconds": 4.5,
+        "expected_min_seconds": 60.5,
+        "time_ratio": 13.4,
+        "threshold": 3.0,
+        "triggered": true,
+        "confidence_points": 25.0
+      }
+    },
+    "fraud_score": 98.5,
+    "risk_level": "HIGH",
+    "calibration_multiplier": 1.0,
+    "flag": {
+      "triggered": true,
+      "reasoning_note": "35-word Grade-14.2 response showing FK-delta of +5.8 and delivered in 4.5s (ratio 13.4x below minimum) and cosine drift of 0.61 vs. session mean co-fired.",
+      "recommended_action": "HUMAN_REVIEW_REQUIRED",
+      "auto_reject": false
+    },
+    "recovery_probe": {
+      "triggered": true,
+      "jargon_terms_extracted": [
+        "linearizable",
+        "distributed",
+        "algorithm",
+        "consensus",
+        "microservices"
+      ],
+      "probe_question": "You mentioned distributed consensus with Raft - what happens when a follower node receives a log entry but the leader crashes before it receives the acknowledgment?",
+      "probe_response_index": 4,
+      "post_probe_fraud_score": null,
+      "probe_delta": null,
+      "probe_verdict": "PENDING"
+    },
+    "audit": {
+      "model_used": "synthetic",
+      "embedding_model": "all-MiniLM-L6-v2",
+      "schema_version": "1.0.0"
+    }
+  }
+]

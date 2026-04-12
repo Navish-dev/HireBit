@@ -1,0 +1,63 @@
+[
+  {
+    "session_id": "sess_1739343332_fresher_demo",
+    "candidate_level": "fresher",
+    "response_index": 1,
+    "timestamp_utc": "2025-09-14T10:00:00Z",
+    "response_metadata": {
+      "question_text": "What is an array?",
+      "response_text": "An array is a data structure used to store a collection of elements. Elements Can be accessed by index.",
+      "word_count": 18,
+      "flesch_kincaid_grade": 6.4,
+      "delta_t_seconds": 32.1,
+      "words_per_second": 0.56
+    },
+    "signals": {
+      "cosine_drift": {
+        "value": 0.00,
+        "threshold": 0.45,
+        "triggered": false,
+        "confidence_points": 0.0
+      },
+      "vocabulary_delta": {
+        "current_fk": 6.4,
+        "session_mean_fk": 6.4,
+        "delta": 0.0,
+        "threshold": 2.5,
+        "triggered": false,
+        "confidence_points": 0.0
+      },
+      "time_complexity": {
+        "delta_t_seconds": 32.1,
+        "expected_min_seconds": 27.5,
+        "time_ratio": 0.85,
+        "threshold": 5.0,
+        "triggered": false,
+        "confidence_points": 0.0
+      }
+    },
+    "fraud_score": 0.0,
+    "risk_level": "LOW",
+    "calibration_multiplier": 0.8,
+    "flag": {
+      "triggered": false,
+      "reasoning_note": "Normal baseline.",
+      "recommended_action": "NONE",
+      "auto_reject": false
+    },
+    "recovery_probe": {
+      "triggered": false,
+      "jargon_terms_extracted": [],
+      "probe_question": null,
+      "probe_response_index": null,
+      "post_probe_fraud_score": null,
+      "probe_delta": null,
+      "probe_verdict": "NONE"
+    },
+    "audit": {
+      "model_used": "synthetic",
+      "embedding_model": "all-MiniLM-L6-v2",
+      "schema_version": "1.0.0"
+    }
+  }
+]

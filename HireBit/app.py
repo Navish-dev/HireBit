@@ -24,24 +24,39 @@ from config import QUESTIONS_PER_SESSION, PROBE_TRIGGER_THRESHOLD
 
 class FaceDetector:
     def __init__(self):
+        self.face_detection = None
+        self.face_cascade = None
         try:
-            self.face_detection = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
-        except NameError:
-            self.face_detection = None
+            if 'mp_face_detection' in globals():
+                self.face_detection = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
+        except Exception:
+            pass
+            
+        if not self.face_detection:
+            # Fallback to OpenCV Haar Cascades
+            self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
+        faces_count = 0
+        
         if self.face_detection:
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             results = self.face_detection.process(img_rgb)
-            faces = len(results.detections) if results.detections else 0
+            faces_count = len(results.detections) if results.detections else 0
+        elif self.face_cascade is not None:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # detectMultiScale returns a tuple of rects
+            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            faces_count = len(faces)
             
-            if faces != 1:
-                cv2.putText(img, f"WARNING: {faces} Faces Detected!", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            else:
-                cv2.putText(img, "Face Tracking Active", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if faces_count != 1:
+            cv2.putText(img, f"WARNING: {faces_count} Faces Detected!", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        else:
+            cv2.putText(img, "Face Tracking Active", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 
 # Configure page
 st.set_page_config(page_title="HireBit - AI Interview Agent", layout="wide")
@@ -78,20 +93,22 @@ def process_answer(response_text):
     st.session_state.session_fk_scores.append(fk_grade)
     st.session_state.session_embeddings.append(new_emb)
     
-    # 5. Compute Fraud Score
+    # 5. Evaluate correctness and AI generation
+    eval_result = evaluate_answer(st.session_state.job_field, st.session_state.current_question, response_text)
+    ai_prob = eval_result.get("ai_generated_probability", 0)
+    
+    # 6. Compute Total Fraud Score
     score_result = compute_fraud_score(
         drift_score=drift_score,
         fk_delta=fk_delta,
         time_ratio=time_results["time_ratio"],
         delta_t=delta_t,
         word_count=word_count,
-        candidate_level=st.session_state.candidate_level
+        candidate_level=st.session_state.candidate_level,
+        ai_probability=ai_prob
     )
     
     fraud_score = score_result["fraud_score"]
-    
-    # NEW: evaluate correctness
-    eval_result = evaluate_answer(st.session_state.job_field, st.session_state.current_question, response_text)
     
     # Is this response for an actively generated Probe?
     is_probe_response = bool(st.session_state.pending_probe)
@@ -155,20 +172,27 @@ tab_candidate, tab_recruiter = st.tabs(["Candidate View", "Recruiter View 🔒"]
 with tab_candidate:
     st.title("HireBit Interview")
     
+    total_qs = len(st.session_state.custom_questions) if hasattr(st.session_state, "custom_questions") and st.session_state.custom_questions else QUESTIONS_PER_SESSION
+    
     if not st.session_state.started:
         st.write("Welcome to HireBit. To begin, please select your experience level.")
         job_field = st.text_input("Job Field / Domain (e.g. Software Engineer, Data Scientist):", value="Software Engineer")
+        
+        with st.expander("Recruiter Advanced Settings"):
+            st.write("Provide custom questions directly (one per line). Overrides AI generation.")
+            custom_qs = st.text_area("Custom Questions (optional):")
+            
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Fresher (0-2 years)"):
-                start_interview("fresher", job_field)
+                start_interview("fresher", job_field, custom_qs)
                 st.rerun()
         with col2:
             if st.button("Senior (3+ years)"):
-                start_interview("senior", job_field)
+                start_interview("senior", job_field, custom_qs)
                 st.rerun()
     
-    elif len(st.session_state.responses) >= QUESTIONS_PER_SESSION:
+    elif len(st.session_state.responses) >= total_qs:
         st.success("Thank you. Your session is complete.")
         st.session_state.completed = True
         
@@ -202,7 +226,7 @@ with tab_candidate:
         colA, colB = st.columns([2, 1])
         
         with colA:
-            st.subheader(f"Question {q_idx} of {QUESTIONS_PER_SESSION}")
+            st.subheader(f"Question {q_idx} of {total_qs}")
             
             # Load question
             if st.session_state.pending_probe:
@@ -210,14 +234,23 @@ with tab_candidate:
             else:
                 # We generate a new question if not set for this step
                 if getattr(st.session_state, 'q_idx_generated', -1) != q_idx:
-                    with st.spinner("Generating question..."):
-                        if len(st.session_state.responses) > 0:
-                            prev_q = st.session_state.responses[-1]["question"]
-                            prev_a = st.session_state.responses[-1]["answer"]
+                    with st.spinner("Preparing question..."):
+                        if hasattr(st.session_state, "custom_questions") and st.session_state.custom_questions:
+                            # Use static questions
+                            if q_idx <= len(st.session_state.custom_questions):
+                                current_q = st.session_state.custom_questions[q_idx - 1]
+                            else:
+                                current_q = "Thank you. Please hit submit to finish."
                         else:
-                            prev_q, prev_a = None, None
-                        
-                        current_q = generate_question(st.session_state.job_field, prev_q, prev_a)
+                            # LLM dynamically generate question
+                            if len(st.session_state.responses) > 0:
+                                prev_q = st.session_state.responses[-1]["question"]
+                                prev_a = st.session_state.responses[-1]["answer"]
+                            else:
+                                prev_q, prev_a = None, None
+                            
+                            current_q = generate_question(st.session_state.job_field, prev_q, prev_a)
+                            
                         st.session_state.q_idx_generated = q_idx
                         st.session_state.cached_q = current_q
                 else:
@@ -283,6 +316,33 @@ with tab_recruiter:
             st.caption("Based on average correctness penalized by fraud score.")
         
         st.divider()
+
+        # --- LIVE PROCTORING FEED ---
+        st.subheader("🔴 Live Integrity Feed")
+        proctor_data = get_session_history(st.session_state.session_id)
+        proctor_events = [p for p in proctor_data if p.get("risk_level") == "PROCTOR_EVENT"]
+        
+        if proctor_events:
+            # Stats from proctor events
+            switches = len([e for e in proctor_events if "WINDOW_FOCUS" in e.get("flag", {}).get("reasoning_note", "")])
+            clipboard = len([e for e in proctor_events if "CLIPBOARD" in e.get("flag", {}).get("reasoning_note", "")])
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Window Tab Shifts", switches)
+            c2.metric("Clipboard Events", clipboard)
+            
+            latest_status = proctor_events[-1]["flag"]["reasoning_note"]
+            c3.markdown(f"**Latest Activity:**\n`{latest_status}`")
+            
+            with st.expander("View Full Violation History", expanded=True):
+                for event in reversed(proctor_events):
+                    ts = event.get("signals", {}).get("event", "UNKNOWN")
+                    details = event.get("flag", {}).get("reasoning_note", "No details")
+                    st.write(f"**{ts}**: {details}")
+        else:
+            st.info("Waiting for proctor badge activity...")
+
+        st.divider()
         
         for idx, resp in enumerate(st.session_state.responses):
             flag = resp["flag_payload"]
@@ -296,13 +356,19 @@ with tab_recruiter:
                 st.markdown(f"**A:** {resp['answer']}")
                 st.markdown("---")
                 
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3, col4, col5 = st.columns(5)
                 col1.metric("Delivery Time", f"{resp['delta_t']:.1f}s")
                 col2.metric("Word Count", flag["response_metadata"]["word_count"])
                 col3.metric("FK Grade", flag["response_metadata"]["flesch_kincaid_grade"])
-                col4.metric("Correctness", f"{resp.get('eval_result', {}).get('correctness_score', 'N/A')}/10")
+                col4.metric("Correct", f"{resp.get('eval_result', {}).get('correctness_score', 'N/A')}/10")
+                
+                ai_prob = flag["signals"].get("ai_generation", {}).get("probability", "N/A")
+                col5.metric("AI Prob", f"{ai_prob}%")
                 
                 st.caption(f"**Evaluation:** {resp.get('eval_result', {}).get('reasoning', '')}")
+                ai_reasoning = resp.get('eval_result', {}).get('ai_detection_reasoning', '')
+                if ai_reasoning and ai_reasoning != "N/A":
+                    st.caption(f"**AI Detection:** {ai_reasoning}")
                 
                 if flag["fraud_score"] >= PROBE_TRIGGER_THRESHOLD:
                     st.warning(f"**FLAGGED:** {flag['flag']['reasoning_note']}")
